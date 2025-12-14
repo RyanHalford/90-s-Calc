@@ -1,0 +1,521 @@
+<!doctype html>
+<!-- Untitled-1: Retro Black & White Calculator / POS SPA -->
+<!-- Save this file and open in a browser. Uses localStorage for persistence. -->
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Retro Calc / POS</title>
+    <style>
+        /* Retro black & white theme (90s-ish) */
+        :root{--bg:#000;--fg:#fff;--panel:#111;--accent:#fff}
+        *{box-sizing:border-box}
+        body{
+            margin:0;background:var(--bg);color:var(--fg);
+            font-family: "Courier New", Courier, monospace; -webkit-font-smoothing:antialiased;
+            padding:12px;
+        }
+        header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+        header h1{font-size:18px;margin:0;letter-spacing:2px}
+        .app{display:grid;grid-template-columns:280px 1fr 320px;gap:12px}
+        .panel{
+            background:linear-gradient(180deg,#111,#000);border:2px solid var(--fg);
+            padding:10px;height:75vh;overflow:auto;
+            box-shadow: 4px 4px 0 rgba(255,255,255,0.03);
+        }
+        .panel h2{font-size:14px;margin:0 0 8px 0}
+        form.row{display:flex;gap:8px;margin-bottom:8px}
+        input,button,select{background:transparent;color:var(--fg);border:2px solid var(--fg);padding:6px}
+        button{cursor:pointer}
+        ul{list-style:none;padding:0;margin:0}
+        li.item{display:flex;justify-content:space-between;align-items:center;padding:6px 4px;border-top:1px dashed #444}
+        .muted{color:#bbb;font-size:12px}
+        .small{font-size:12px}
+        .cart-list li{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 4px;border-top:1px dashed #444}
+        .qty{width:48px;padding:4px}
+        .kbd{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px}
+        .kbd button{padding:12px;font-weight:bold}
+        .flex{display:flex;gap:8px;align-items:center}
+        .center{display:flex;flex-direction:column;gap:8px}
+        .summary{border-top:2px solid #444;padding-top:8px;margin-top:8px}
+        .tabbar{display:flex;gap:6px;margin-top:8px}
+        .tabbar button{flex:1}
+        .leaderboard li, .history li{padding:6px;border-top:1px dashed #444}
+        .history li.highlight{box-shadow:0 0 8px rgba(255,255,255,0.15);border-left:4px solid #fff}
+        .recent-history{position:fixed;right:12px;bottom:12px;width:320px;max-height:40vh;overflow:auto;background:linear-gradient(180deg,#111,#000);border:2px solid var(--fg);padding:8px;z-index:999}
+        .recent-history h3{margin:0 0 6px 0;font-size:13px}
+        .recent-history ul{max-height:calc(40vh - 36px);overflow:auto;margin:0;padding:0}
+        .recent-history li{padding:6px;border-top:1px dashed #444}
+        .btn-danger{background:#000;color:var(--fg);border-color:#f33}
+        .btn-small{padding:4px 6px;font-size:12px}
+        .note{font-size:12px;color:#ddd}
+        footer{margin-top:8px;font-size:12px;color:#aaa}
+    </style>
+</head>
+<body>
+    <header>
+        <h1>RETRO CALC • B/W</h1>
+        <div class="muted">Simple browser POS / calculator — persistence in localStorage</div>
+        <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+            <div id="syncStatus" class="small muted">Sync: local</div>
+            <a id="openWindow" class="small" title="Open the calculator in a new window" target="_blank">Open in new window</a>
+            <button id="syncBtn" class="small">Enable Sync</button>
+        </div>
+    </header>
+
+    <div class="app">
+        <!-- Left: Items and Employees -->
+        <section class="panel" id="itemsPanel">
+            <h2>Items</h2>
+            <form id="addItemForm" class="row">
+                <input id="itemName" placeholder="Name" required />
+                <input id="itemPrice" placeholder="Price" inputmode="decimal" />
+                <button type="submit">Add</button>
+            </form>
+
+            <ul id="itemsList"></ul>
+
+            <h2 style="margin-top:12px">Employees</h2>
+            <form id="addEmpForm" class="row">
+                <input id="empName" placeholder="Employee name" required />
+                <button type="submit">Add</button>
+            </form>
+            <ul id="empList"></ul>
+            <div class="note">Select employee at checkout (affects leaderboard)</div>
+        </section>
+
+        <!-- Center: Cart + Calculator -->
+        <section class="panel" id="cartPanel">
+            <h2>Cart</h2>
+
+            <h2 style="margin-top:12px">Active Cart</h2>
+            <ul id="cartList" class="cart-list"></ul>
+
+            <div class="summary">
+                <div class="flex"><div class="muted">Subtotal:</div><div id="subtotal">0.00</div></div>
+                <div class="flex"><div class="muted">Items:</div><div id="itemsCount">0</div></div>
+            </div>
+        </section>
+
+        <!-- Right: Checkout, History, Leaderboard -->
+        <section class="panel" id="checkoutPanel">
+            <h2>Checkout</h2>
+            <div class="row">
+                <select id="empSelect"></select>
+                <input id="saleName" placeholder="Sale name (optional)" />
+            </div>
+
+            <div style="margin-top:8px">
+                <div class="muted small">Discount ($)</div>
+                <input id="discount" type="number" min="0" step="0.01" value="0" />
+                <div class="muted small" style="margin-top:6px">Labor (%)</div>
+                <input id="labor" type="number" min="0" step="0.1" value="0" />
+            </div>
+
+            <div class="summary" style="margin-top:10px">
+                <div class="flex"><div class="muted">Subtotal</div><div id="coSubtotal">0.00</div></div>
+                <div class="flex"><div class="muted">Discount</div><div id="coDiscount">0.00</div></div>
+                <div class="flex"><div class="muted">Labor</div><div id="coLabor">0.00</div></div>
+                <div class="flex"><strong>Total</strong><strong id="coTotal">0.00</strong></div>
+            </div>
+
+            <div style="margin-top:8px" class="tabbar">
+                <button id="btnCheckout">Checkout</button>
+                <button id="btnSaveQuick">Save Quick</button>
+            </div>
+
+            <h2 style="margin-top:12px">History</h2>
+            <ul id="historyList" class="history"></ul>
+            <div style="display:flex;gap:6px;margin-top:6px">
+                <button id="clearHistory" class="btn-small btn-danger">Clear History</button>
+                <button id="exportHistory" class="btn-small">Export</button>
+            </div>
+
+            <h2 style="margin-top:12px">Leaderboard</h2>
+            <ul id="leaderboard" class="leaderboard"></ul>
+        </section>
+    </div>
+
+    <footer>Built for quick prototyping. Data stored locally in your browser.</footer>
+
+    <aside class="recent-history" id="recentHistory" aria-live="polite">
+        <h3>Recent Sales</h3>
+        <ul id="recentList"></ul>
+    </aside>
+
+    <script>
+        // Data keys
+        const KEY_ITEMS = 'rbw_items_v1';
+        const KEY_EMPS = 'rbw_emps_v1';
+        const KEY_HISTORY = 'rbw_history_v1';
+        const KEY_LEAD = 'rbw_lead_v1';
+
+        // In-memory
+        let items = load(KEY_ITEMS, []);
+        let emps = load(KEY_EMPS, []);
+        let history = load(KEY_HISTORY, []);
+        let leaderboard = load(KEY_LEAD, []);
+        let cart = [];
+
+        // Helpers
+        function save(key, v){ localStorage.setItem(key, JSON.stringify(v)) }
+        function load(key, def){ try{ return JSON.parse(localStorage.getItem(key)) || def } catch(e){ return def } }
+        function fmt(n){ return Number(n||0).toFixed(2) }
+
+        // DOM refs
+        const itemsList = document.getElementById('itemsList');
+        const empList = document.getElementById('empList');
+        const addItemForm = document.getElementById('addItemForm');
+        const addEmpForm = document.getElementById('addEmpForm');
+        const cartList = document.getElementById('cartList');
+        const subtotalEl = document.getElementById('subtotal');
+        const itemsCountEl = document.getElementById('itemsCount');
+        const clearCartBtn = document.getElementById('clearCart');
+        
+        const empSelect = document.getElementById('empSelect');
+        const saleName = document.getElementById('saleName');
+        const discountInp = document.getElementById('discount');
+        const laborInp = document.getElementById('labor');
+        const coSubtotal = document.getElementById('coSubtotal');
+        const coDiscount = document.getElementById('coDiscount');
+        const coLabor = document.getElementById('coLabor');
+        const coTotal = document.getElementById('coTotal');
+        const btnCheckout = document.getElementById('btnCheckout');
+        const historyList = document.getElementById('historyList');
+        const leaderboardEl = document.getElementById('leaderboard');
+        const clearHistoryBtn = document.getElementById('clearHistory');
+        const exportHistoryBtn = document.getElementById('exportHistory');
+        const openWindowLink = document.getElementById('openWindow');
+        const syncBtn = document.getElementById('syncBtn');
+        const syncStatus = document.getElementById('syncStatus');
+
+        // Remote (Firebase) references (initialized when user enables sync)
+        let remoteDb = null;
+        let remoteHistoryRef = null;
+        let lastSaleId = null;
+
+        // Init UI
+        renderItems();
+        renderEmps();
+        renderCart();
+        renderHistory();
+        renderLeader();
+
+        // --- Remote sync helpers ---
+        function loadScript(url){
+            return new Promise((resolve, reject)=>{
+                const s = document.createElement('script'); s.src = url; s.onload = resolve; s.onerror = reject; document.head.appendChild(s);
+            });
+        }
+
+        async function enableRemoteSync(){
+            if(remoteDb) return alert('Sync already enabled.');
+            const raw = prompt('Paste your Firebase config JSON (the object from your Firebase console)\nExample: {"apiKey":"...","authDomain":"...","databaseURL":"https://<your-db>.firebaseio.com",...}');
+            if(!raw) return;
+            let cfg;
+            try{ cfg = JSON.parse(raw); } catch(e){ return alert('Invalid JSON'); }
+
+            try{
+                syncStatus.textContent = 'Sync: loading SDK...';
+                // load compat libs for simplicity
+                await loadScript('https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js');
+                await loadScript('https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js');
+                // initialize
+                firebase.initializeApp(cfg);
+                remoteDb = firebase.database();
+                remoteHistoryRef = remoteDb.ref('rbw_history_v1');
+
+                // listen for new remote sales
+                remoteHistoryRef.on('child_added', snapshot => {
+                    const sale = snapshot.val();
+                    if(!sale) return;
+                    // avoid duplicates: check by id
+                    if(history.find(h=>String(h.id) === String(sale.id))) return;
+                    history.unshift(sale);
+                    save(KEY_HISTORY, history);
+                    // update leaderboard locally
+                    const empKey = sale.employeeId || 'unknown';
+                    const entry = leaderboard.find(l=>l.key==empKey);
+                    if(entry){ entry.total += sale.total; }
+                    else {
+                        const label = emps.find(e=>e.id==empKey)?.name || (empKey==='unknown' ? 'Unknown' : 'User');
+                        leaderboard.push({key:empKey,label, total: sale.total});
+                    }
+                    leaderboard.sort((a,b)=>b.total - a.total);
+                    save(KEY_LEAD, leaderboard);
+                    renderHistory(); renderLeader();
+                });
+
+                // optional: listen for remote deletes
+                remoteHistoryRef.on('child_removed', snapshot => {
+                    const sale = snapshot.val(); if(!sale) return;
+                    history = history.filter(h=>String(h.id)!==String(sale.id)); save(KEY_HISTORY, history); renderHistory();
+                });
+
+                syncStatus.textContent = 'Sync: connected';
+                alert('Remote sync enabled. Make sure your Firebase Realtime Database rules permit reads/writes for testing.');
+            } catch(err){
+                console.error(err);
+                syncStatus.textContent = 'Sync: failed';
+                alert('Failed to enable sync: ' + err.message);
+            }
+        }
+
+        function pushSaleRemote(sale){
+            if(!remoteHistoryRef) return;
+            try{ remoteHistoryRef.child(String(sale.id)).set(sale); } catch(e){ console.warn('Remote push failed', e); }
+        }
+
+        if(syncBtn){ syncBtn.onclick = enableRemoteSync; }
+
+        // Make the open link a normal _blank anchor to avoid popup blockers.
+        if(openWindowLink){
+            openWindowLink.href = location.href;
+            openWindowLink.target = '_blank';
+        }
+
+        // Item add/remove
+        addItemForm.addEventListener('submit', e=>{
+            e.preventDefault();
+            const name = document.getElementById('itemName').value.trim();
+            const price = parseFloat(document.getElementById('itemPrice').value || 0);
+            if(!name) return;
+            items.push({id:Date.now(),name,price:+price});
+            save(KEY_ITEMS, items);
+            document.getElementById('itemName').value='';document.getElementById('itemPrice').value='';
+            renderItems();
+        });
+
+        function renderItems(){
+            itemsList.innerHTML='';
+            items.forEach(it=>{
+                const li = document.createElement('li'); li.className='item';
+                li.innerHTML = `<div><strong>${escapeHtml(it.name)}</strong><div class="muted small">$${fmt(it.price)}</div></div>
+                    <div style="display:flex;gap:6px">
+                        <button data-id="${it.id}" class="btn-small addItem">Add</button>
+                        <button data-id="${it.id}" class="btn-small btn-danger delItem">Del</button>
+                    </div>`;
+                itemsList.appendChild(li);
+            });
+            // delegates
+            itemsList.querySelectorAll('.addItem').forEach(b=>b.onclick=()=>{ addToCart(items.find(x=>x.id==b.dataset.id)); });
+            itemsList.querySelectorAll('.delItem').forEach(b=>b.onclick=()=>{
+                items = items.filter(x=>x.id!=b.dataset.id); save(KEY_ITEMS, items); renderItems();
+            });
+        }
+
+        // Employees
+        addEmpForm.addEventListener('submit', e=>{
+            e.preventDefault();
+            const name = document.getElementById('empName').value.trim();
+            if(!name) return;
+            emps.push({id:Date.now(),name});
+            save(KEY_EMPS, emps);
+            document.getElementById('empName').value='';
+            renderEmps();
+        });
+
+        function renderEmps(){
+            empList.innerHTML=''; empSelect.innerHTML='';
+            emps.forEach(e=>{
+                const li = document.createElement('li'); li.className='item';
+                li.innerHTML = `<span>${escapeHtml(e.name)}</span><div><button data-id="${e.id}" class="btn-small delEmp">Del</button></div>`;
+                empList.appendChild(li);
+                const opt = document.createElement('option'); opt.value = e.id; opt.textContent = e.name;
+                empSelect.appendChild(opt);
+            });
+            empList.querySelectorAll('.delEmp').forEach(b=>b.onclick=()=>{
+                emps = emps.filter(x=>x.id!=b.dataset.id); save(KEY_EMPS, emps); renderEmps();
+            });
+        }
+
+        // Cart operations
+        function addToCart(item){
+            if(!item) return;
+            const existent = cart.find(c=>c.srcId && c.srcId==item.id);
+            if(existent){ existent.q++; }
+            else cart.push({id:Date.now(),srcId:item.id,name:item.name,price:+item.price,q:1});
+            renderCart();
+            try{ document.getElementById('cartPanel').scrollIntoView({behavior:'smooth'}); }catch(e){}
+        }
+
+        if(clearCartBtn) clearCartBtn.onclick = ()=>{ cart=[]; renderCart(); }
+
+        function renderCart(){
+            cartList.innerHTML='';
+            cart.forEach(c=>{
+                const li = document.createElement('li'); li.className='item';
+                li.innerHTML = `<div style="flex:1"><strong>${escapeHtml(c.name)}</strong><div class="muted small">$${fmt(c.price)} each</div></div>
+                    <div style="display:flex;gap:6px;align-items:center">
+                        <input class="qty" type="number" min="0" value="${c.q}" data-id="${c.id}" />
+                        <div class="muted small">$${fmt(c.price * c.q)}</div>
+                        <button class="btn-small delCart" data-id="${c.id}">Del</button>
+                    </div>`;
+                cartList.appendChild(li);
+            });
+            // qty change handler
+            cartList.querySelectorAll('.qty').forEach(i=>{
+                i.onchange = ()=> {
+                    const id = i.dataset.id; const val = parseInt(i.value) || 0;
+                    if(val<=0){ cart = cart.filter(x=>x.id!=id); } else { const it = cart.find(x=>x.id==id); if(it) it.q=val; }
+                    renderCart();
+                }
+            });
+            cartList.querySelectorAll('.delCart').forEach(b=>b.onclick=()=>{
+                cart = cart.filter(x=>x.id!=b.dataset.id); renderCart();
+            });
+
+            const subtotal = cart.reduce((s,c)=>s + (c.price * c.q),0);
+            subtotalEl.textContent = fmt(subtotal);
+            itemsCountEl.textContent = cart.reduce((s,c)=>s+c.q,0);
+
+            // update checkout summary display
+            updateCheckoutSummary();
+        }
+
+        // (Custom add removed) use left-side item list + +Cart buttons to add items.
+
+        // Checkout calculations & actions
+        function updateCheckoutSummary(){
+            const subtotal = cart.reduce((s,c)=>s + c.price * c.q,0);
+            // discount is a dollar amount, labor is a percentage added to subtotal
+            const discountAmt = parseFloat(discountInp.value) || 0;
+            const laborPct = parseFloat(laborInp.value) || 0;
+            const laborAmt = subtotal * (laborPct/100);
+            const total = Math.max(0, subtotal - discountAmt + laborAmt);
+
+            coSubtotal.textContent = fmt(subtotal);
+            coDiscount.textContent = '-' + fmt(discountAmt);
+            coLabor.textContent = '+' + fmt(laborAmt);
+            coTotal.textContent = fmt(total);
+        }
+        discountInp.oninput = updateCheckoutSummary;
+        laborInp.oninput = updateCheckoutSummary;
+
+        btnCheckout.onclick = ()=>{
+            try{
+                if(cart.length===0) return alert('Cart empty.');
+                const subtotal = cart.reduce((s,c)=>s + c.price * c.q,0);
+                const discount = parseFloat(discountInp.value) || 0; // dollar amount
+                const laborPct = parseFloat(laborInp.value) || 0; // percent
+                const laborAmt = subtotal * (laborPct/100);
+                const total = Math.max(0, subtotal - discount + laborAmt);
+                const sale = {
+                    id: Date.now(),
+                    name: saleName.value || '',
+                    employeeId: empSelect.value || null,
+                    items: cart.map(c=>({name:c.name,price:c.price,q:c.q})),
+                    subtotal, discount, laborPct, labor: laborAmt, total,
+                    created: new Date().toISOString()
+                };
+
+                console.log('Checkout sale:', sale);
+                history.unshift(sale); // newest first
+                save(KEY_HISTORY, history);
+                console.log('History length after push:', history.length);
+                lastSaleId = sale.id;
+                try{ renderRecentHistory(); console.log('renderRecentHistory called'); }catch(e){ console.warn('renderRecentHistory failed', e); }
+
+                // leaderboard: record by employee or general
+                const empKey = sale.employeeId || 'unknown';
+                const entry = leaderboard.find(l=>l.key==empKey);
+                if(entry){ entry.total += total; }
+                else {
+                    const label = emps.find(e=>e.id==empKey)?.name || (empKey==='unknown' ? 'Unknown' : 'User');
+                    leaderboard.push({key:empKey,label, total});
+                }
+                // sort and save
+                leaderboard.sort((a,b)=>b.total - a.total);
+                save(KEY_LEAD, leaderboard);
+
+                cart = []; saleName.value=''; discountInp.value='0'; laborInp.value='0';
+                save(KEY_ITEMS, items); renderCart(); renderHistory(); renderLeader();
+                // highlight and scroll to the new history entry
+                try{
+                    if(lastSaleId){
+                        const el = document.getElementById('hist-' + lastSaleId);
+                        if(el){ el.scrollIntoView({behavior:'smooth', block:'center'}); el.classList.add('highlight'); setTimeout(()=>el.classList.remove('highlight'),3000); }
+                        lastSaleId = null;
+                    } else {
+                        document.getElementById('checkoutPanel')?.scrollIntoView({behavior:'smooth'});
+                    }
+                }catch(e){}
+                alert('Checkout saved.');
+            }catch(err){
+                console.error('Checkout failed', err);
+                alert('Checkout failed: ' + (err && err.message ? err.message : String(err)));
+            }
+        };
+
+        // History & Leaderboard
+        function renderHistory(){
+            historyList.innerHTML='';
+            history.forEach(h=>{
+                const li = document.createElement('li'); li.id = 'hist-' + h.id;
+                const empName = emps.find(e=>e.id==h.employeeId)?.name || 'N/A';
+                li.innerHTML = `<div style="display:flex;justify-content:space-between">
+                        <div><strong>${escapeHtml(h.name||'Sale')}</strong><div class="muted small">${new Date(h.created).toLocaleString()} • ${escapeHtml(empName)}</div></div>
+                        <div><div class="muted">$${fmt(h.total)}</div>
+                            <div style="display:flex;gap:6px;margin-top:6px">
+                                <button data-id="${h.id}" class="btn-small reprint">View</button>
+                                <button data-id="${h.id}" class="btn-small btn-danger delHistory">Del</button>
+                            </div>
+                        </div>
+                    </div>`;
+                historyList.appendChild(li);
+            });
+            renderRecentHistory();
+            historyList.querySelectorAll('.delHistory').forEach(b=>b.onclick=()=>{
+                history = history.filter(h=>h.id != b.dataset.id); save(KEY_HISTORY, history); renderHistory();
+            });
+            historyList.querySelectorAll('.reprint').forEach(b=>b.onclick=()=> {
+                const h = history.find(x=>x.id==b.dataset.id);
+                if(!h) return;
+                let msg = `Sale: ${h.name||'Sale'}\nWhen: ${new Date(h.created).toLocaleString()}\nTotal: $${fmt(h.total)}\nItems:\n`;
+                h.items.forEach(it=> msg += ` - ${it.name} x${it.q} @ $${fmt(it.price)}\n`);
+                alert(msg);
+            });
+        }
+
+        function renderLeader(){
+            leaderboardEl.innerHTML='';
+            leaderboard.slice(0,10).forEach(l=>{
+                const li = document.createElement('li');
+                li.innerHTML = `<div style="display:flex;justify-content:space-between"><div>${escapeHtml(l.label||'User')}</div><div>$${fmt(l.total)}</div></div>`;
+                leaderboardEl.appendChild(li);
+            });
+        }
+
+        // Render a small fixed recent-sales box (last 5)
+        function renderRecentHistory(){
+            const recentEl = document.getElementById('recentList');
+            if(!recentEl) return;
+            recentEl.innerHTML = '';
+            history.slice(0,5).forEach(h=>{
+                const li = document.createElement('li');
+                const when = new Date(h.created).toLocaleString();
+                li.innerHTML = `<div style="display:flex;justify-content:space-between"><div><strong>${escapeHtml(h.name||'Sale')}</strong><div class="muted small">${when}</div></div><div>$${fmt(h.total)}</div></div>`;
+                recentEl.appendChild(li);
+            });
+        }
+
+        clearHistoryBtn.onclick = ()=>{ if(confirm('Clear history?')){ history=[]; save(KEY_HISTORY, history); renderHistory(); } }
+        exportHistoryBtn.onclick = ()=> {
+            const data = JSON.stringify(history, null, 2);
+            const blob = new Blob([data], {type:'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = 'history.json';
+            a.click(); URL.revokeObjectURL(url);
+        };
+
+        // Utility: escape HTML
+        function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+        // Load sample demo items if empty (optional)
+        if(items.length===0){
+            items.push({id:'i1',name:'Widget',price:9.99},{id:'i2',name:'Service',price:25.00},{id:'i3',name:'Part',price:4.5});
+            save(KEY_ITEMS, items); renderItems();
+        }
+    </script>
+</body>
+</html>
