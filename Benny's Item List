@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Tiered Checkout System (No Framework)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body { font-family: Arial, sans-serif; background:#f4f4f4; padding:20px; }
+    .card { background:#fff; padding:20px; border-radius:10px; max-width:900px; margin:auto; }
+    h1 { margin-bottom:15px; }
+    .row { display:flex; gap:10px; flex-wrap:wrap; }
+    label { font-weight:bold; }
+    select, input { padding:6px; min-width:200px; }
+    button { padding:8px 14px; margin-top:10px; cursor:pointer; }
+    table { width:100%; border-collapse:collapse; margin-top:20px; }
+    th, td { border:1px solid #ccc; padding:8px; text-align:left; }
+    th { background:#eee; }
+    .total { text-align:right; font-size:18px; font-weight:bold; margin-top:10px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Performance Parts Checkout</h1>
+
+    <div class="row">
+      <div>
+        <label>Category</label><br />
+        <select id="category">
+          <option value="">-- Select Category --</option>
+          <option value="tier1">Tier 1</option>
+          <option value="tier2">Tier 2</option>
+          <option value="tier3">Tier 3</option>
+          <option value="tier4">Tier 4</option>
+          <option value="tier5">Tier 5</option>
+          <option value="internals">Internals</option>
+          <option value="extra">Extra</option>
+          <option value="cosmetic">Cosmetic</option>
+        </select>
+      </div>
+
+      <div>
+        <label>Part</label><br />
+        <select id="part">
+          <option value="">-- Select Part --</option>
+        </select>
+      </div>
+
+      <div>
+        <label>Quantity</label><br />
+        <input id="qty" type="number" min="1" value="1" />
+      </div>
+    </div>
+
+    <button onclick="addItem()">Add to Cart</button>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th>Part</th>
+          <th>Qty</th>
+          <th>Price</th>
+          <th>Total</th>
+        </tr>
+      </thead>
+      <tbody id="cart"></tbody>
+    </table>
+
+    <div class="total">Grand Total: $<span id="grandTotal">0.00</span></div>
+  </div>
+
+  <script>
+    const data = {
+      tier1: { Engine: 187.5, Trans: 187.5, Brake: 750, Sus: 187.5 },
+      tier2: { Engine: 750, Trans: 750, Brake: 1875, Sus: 750 },
+      tier3: { Engine: 1875, Trans: 2250, Brake: 3750, Sus: 1875 },
+      tier4: { Engine: 4312.5, Trans: 5677.5, Sus: 3187.5 },
+      tier5: { Engine: 5812.5, Sus: 4500 },
+      internals: {
+        "Oil Pump": 75,
+        "Fuel Tank": 75,
+        "Battery CB": 75,
+        Heads: 75,
+        "Drive Shaft": 75
+      },
+      extra: { Turbo: 4500, "Race HR": 262.5, "DR Tires": 487.5 },
+      cosmetic: { General: 100 }
+    };
+
+    const categorySelect = document.getElementById('category');
+    const partSelect = document.getElementById('part');
+    const qtyInput = document.getElementById('qty');
+    const cartBody = document.getElementById('cart');
+    const grandTotalEl = document.getElementById('grandTotal');
+
+    let grandTotal = 0;
+
+    categorySelect.addEventListener('change', () => {
+      partSelect.innerHTML = '<option value="">-- Select Part --</option>';
+      const cat = categorySelect.value;
+      if (!data[cat]) return;
+
+      for (const part in data[cat]) {
+        const opt = document.createElement('option');
+        opt.value = part;
+        opt.textContent = part + ' ($' + data[cat][part] + ')';
+        partSelect.appendChild(opt);
+      }
+    });
+
+    function addItem() {
+      const cat = categorySelect.value;
+      const part = partSelect.value;
+      const qty = Number(qtyInput.value);
+      if (!cat || !part || qty < 1) return alert('Please select category, part, and quantity');
+
+      const price = data[cat][part];
+      const total = price * qty;
+      grandTotal += total;
+
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${cat}</td>
+        <td>${part}</td>
+        <td>${qty}</td>
+        <td>$${price.toFixed(2)}</td>
+        <td>$${total.toFixed(2)}</td>
+      `;
+
+      cartBody.appendChild(row);
+      grandTotalEl.textContent = grandTotal.toFixed(2);
+    }
+  </script>
+</body>
+</html>
